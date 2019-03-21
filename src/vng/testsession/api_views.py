@@ -12,7 +12,7 @@ from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
 from django.http import (
-    Http404, HttpResponse, HttpResponseRedirect, HttpResponseServerError, HttpResponseForbidden
+    Http404, HttpResponse, HttpResponseForbidden
 )
 
 from rest_framework import generics, permissions, viewsets, views, mixins
@@ -20,18 +20,16 @@ from rest_framework.authentication import (
     SessionAuthentication, TokenAuthentication
 )
 from vng.testsession.models import (
-    ScenarioCase, Session, SessionLog, SessionType, VNGEndpoint, ExposedUrl, TestSession, Report
+    ScenarioCase, Session, SessionLog, SessionType, ExposedUrl, Report
 )
 
 from ..utils import choices
-from ..utils.views import (
-    ListAppendView, OwnerMultipleObjects, OwnerSingleObject, CSRFExemptMixin, SingleObjectMixin, ObjectOwner
-)
+from ..utils.views import CSRFExemptMixin
 from .permission import IsOwner
 from .serializers import (
     SessionSerializer, SessionTypesSerializer, ExposedUrlSerializer, ScenarioCaseSerializer
 )
-from .views import bootstrap_session, StopSession
+from .views import bootstrap_session
 from .task import run_tests, stop_session
 
 logger = logging.getLogger(__name__)
