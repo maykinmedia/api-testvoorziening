@@ -100,7 +100,7 @@ def purge_sessions():
 @app.task
 def create_latent_session(session_type):
     '''
-    Cre ate all the necessary endpoint and exposes it so they can be used as proxy
+    Create all the necessary endpoint and exposes it so they can be used as proxy
     In case there is one or multiple docker images linked, it starts all of them
     '''
     session = Session.objects.create(
@@ -141,6 +141,10 @@ def create_latent_session(session_type):
 
 @app.task
 def bootstrap_session(session_pk):
+    """
+    Fetch the sleeping session with the same session type, fill it with the same data
+    and manages to start a new session for the future
+    """
     session = Session.objects.get(pk=session_pk)
     latent_session = Session.objects.filter(session_type=session.session_type, status=choices.StatusChoices.sleeping).first()
     latent_session.status = choices.StatusChoices.running
@@ -148,12 +152,9 @@ def bootstrap_session(session_pk):
     latent_session.user = session.user
     if session.build_version:
         latent_session.build_version = session.build_version
-    try:
-        latent_session.save()
-        session.delete()
-        create_latent_session(latent_session.session_type)
-    except Exception as e:
-        print(e)
+    latent_session.save()
+    session.delete()
+    create_latent_session(latent_session.session_type)
 
 
 @app.task
