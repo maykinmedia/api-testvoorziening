@@ -98,18 +98,27 @@ def purge_sessions():
 
 
 @app.task
-def bootstrap_session(session_pk):
+def create_latent_session(session_type):
     '''
     Cre ate all the necessary endpoint and exposes it so they can be used as proxy
     In case there is one or multiple docker images linked, it starts all of them
     '''
-    session = Session.objects.get(pk=session_pk)
+    session = Session.objects.create(
+        session_type=session_type,
+        status=choices.StatusChoices.sleeping,
+        started=None,
+        name=Session.assign_name(0)
+    )
     endpoint = VNGEndpoint.objects.filter(session_type=session.session_type)
     try:
         error_deployment = False
 
         for ep in endpoint:
-            bind_url = ExposedUrl.objects.create(session=session, vng_endpoint=ep, subdomain='dummy')
+            bind_url = ExposedUrl.objects.create(
+                session=session,
+                vng_endpoint=ep,
+                subdomain='{}'.format(int(time.time()) * 100 + random.randint(0, 99))
+            )
             if ep.docker_image:
                 ip, message = start_app_b8s(session, bind_url)
                 if message is None:
@@ -119,16 +128,32 @@ def bootstrap_session(session_pk):
                     session.status = choices.StatusChoices.error_deploy
                     session.error_message = message
             if not error_deployment:
-                bind_url.subdomain = '{}'.format(int(time.time()) * 100 + random.randint(0, 99))
                 bind_url.save()
             else:
                 bind_url.delete()
         if not error_deployment:
-            session.status = choices.StatusChoices.running
+            session.status = choices.StatusChoices.sleeping
         session.save()
     except Exception as e:
         logger.exception(e)
         session.delete()
+
+
+@app.task
+def bootstrap_session(session_pk):
+    session = Session.objects.get(pk=session_pk)
+    latent_session = Session.objects.filter(session_type=session.session_type, status=choices.StatusChoices.sleeping).first()
+    latent_session.status = choices.StatusChoices.running
+    latent_session.started = session.started
+    latent_session.user = session.user
+    if session.build_version:
+        latent_session.build_version = session.build_version
+    try:
+        latent_session.save()
+        session.delete()
+        create_latent_session(latent_session.session_type)
+    except Exception as e:
+        print(e)
 
 
 @app.task
