@@ -146,7 +146,11 @@ def bootstrap_session(session_pk):
     and manages to start a new session for the future
     """
     session = Session.objects.get(pk=session_pk)
-    latent_session = Session.objects.filter(session_type=session.session_type, status=choices.StatusChoices.sleeping).first()
+    latent_session = Session.objects.filter(session_type=session.session_type, status=choices.StatusChoices.sleeping)
+    if len(latent_session) == 1:
+        latent_session = latent_session.first()
+    else:
+        create_latent_session(session.session_type)
     latent_session.status = choices.StatusChoices.running
     latent_session.started = session.started
     latent_session.user = session.user
