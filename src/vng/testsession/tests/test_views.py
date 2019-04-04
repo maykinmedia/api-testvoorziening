@@ -38,7 +38,7 @@ def get_username():
 
 
 def get_subdomain(url):
-    return re.search('([0-9]+)\.', url).group(1)
+    return re.search('([0-9]+)\-', url).group(1)
 
 
 class RetrieveSessionType(WebTest):
@@ -164,6 +164,15 @@ class TestLog(WebTest):
         self.endpoint_echo_e.session.save()
         self.endpoint_echo_e.save()
 
+        self.endpoint_echo_h = ExposedUrlEchoFactory()
+        self.endpoint_echo_h.session.session_type = self.endpoint_echo_h.vng_endpoint.session_type
+        self.endpoint_echo_h.vng_endpoint.url = 'https://postman-echo.com/headers'
+        self.endpoint_echo_h.vng_endpoint.save()
+        self.endpoint_echo_h.session.session_type.authentication = choices.AuthenticationChoices.jwt
+        self.endpoint_echo_h.session.session_type.save()
+        self.endpoint_echo_h.session.save()
+        self.endpoint_echo_h.save()
+
     def test_retrieve_no_logged(self):
         call = self.app.get(reverse('testsession:session_log', kwargs={'session_id': self.session.id}), status=302)
 
@@ -175,7 +184,7 @@ class TestLog(WebTest):
         url = reverse_sub('serverproxy:run_test', self.exp_url.subdomain, kwargs={
             'relative_url': ''
         })
-        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}.example.com'.format(self.exp_url.subdomain)}, user=self.session.user)
+        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}-example.com'.format(self.exp_url.subdomain)}, user=self.session.user)
         call2 = self.app.get(reverse('testsession:session_log', kwargs={'session_id': self.session.id}), user=self.session.user)
         self.assertTrue(url in call2.text)
 
@@ -216,7 +225,7 @@ class TestLog(WebTest):
         url = call['exposedurl_set'][0]['subdomain']
         session_id = call['id']
         http_host = get_subdomain(url)
-        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}.example.com'.format(http_host)})
+        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}-example.com'.format(http_host)})
         call = self.app.get(reverse('apiv1session:stop_session', kwargs={'pk': session_id}))
         call = get_object(call.body)
         self.assertEqual(call, [])
@@ -231,7 +240,7 @@ class TestLog(WebTest):
         url = reverse_sub('serverproxy:run_test', self.exp_url.subdomain, kwargs={
             'relative_url': 'test/xxx/t'
         })
-        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}.example.com'.format(self.exp_url.subdomain)}, user=self.session.user, status=[404])
+        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}-example.com'.format(self.exp_url.subdomain)}, user=self.session.user, status=[404])
         rp = Report.objects.filter(scenario_case=self.scenarioCase_hard)
         self.assertTrue(len(rp) != 0)
 
@@ -257,9 +266,18 @@ class TestLog(WebTest):
         url = reverse_sub('serverproxy:run_test', self.endpoint_echo_e.subdomain, kwargs={
             'relative_url': 'post/'
         })
-        call = self.app.post(url, url, extra_environ={'HTTP_HOST': '{}.example.com'.format(self.endpoint_echo_e.subdomain)}, user=self.endpoint_echo_e.session.user)
+        call = self.app.post(url, url, extra_environ={'HTTP_HOST': '{}-example.com'.format(self.endpoint_echo_e.subdomain)}, user=self.endpoint_echo_e.session.user)
         self.assertIn('Rewriting request body:', mock_logger.info.call_args_list[-7][0][0])
         self.assertIn(url, call.text)
+
+    def test_no_rewrite_header(self):
+        url = reverse_sub('serverproxy:run_test', self.endpoint_echo_h.subdomain, kwargs={
+            'relative_url': ''
+        })
+        headers = {'authorization': 'dummy'}
+        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}-example.com'.format(self.endpoint_echo_h.subdomain)},
+                            headers=headers, user=self.endpoint_echo_h.session.user)
+        self.assertEqual(call.json['headers']['authorization'], headers['authorization'])
 
 
 class TestUrlMatchingPatterns(WebTest):
@@ -283,13 +301,13 @@ class TestUrlMatchingPatterns(WebTest):
         # Call the url with additional padding
         http_host = get_subdomain(resp.json['exposedurl_set'][0]['subdomain'])
         self.app.get(resp.json['exposedurl_set'][0]['subdomain'] + 'test' + '/dummy',
-                     extra_environ={'HTTP_HOST': '{}.example.com'.format(http_host)}, expect_errors=True)
+                     extra_environ={'HTTP_HOST': '{}-example.com'.format(http_host)}, expect_errors=True)
         # Check that the report has not been crated
         self.assertEqual(len(report_list), len(Report.objects.all()))
 
         # Call the url without further padding
         self.app.get(resp.json['exposedurl_set'][0]['subdomain'] + 'test',
-                     extra_environ={'HTTP_HOST': '{}.example.com'.format(http_host)}, expect_errors=True)
+                     extra_environ={'HTTP_HOST': '{}-example.com'.format(http_host)}, expect_errors=True)
         # Check if the report has been created
         self.assertEqual(len(report_list) + 1, len(Report.objects.all()))
 
@@ -360,7 +378,7 @@ class TestLogNewman(WebTest):
         url = call['exposedurl_set'][0]['subdomain']
 
         http_host = get_subdomain(call['exposedurl_set'][0]['subdomain'])
-        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}.example.com'.format(http_host)})
+        call = self.app.get(url, extra_environ={'HTTP_HOST': '{}-example.com'.format(http_host)})
         call = get_object(call.body)
 
         call = self.app.get(reverse('apiv1session:stop_session', kwargs={'pk': session_id}))
@@ -393,24 +411,27 @@ class TestAuthProxy(WebTest):
 
         self.url_no_auth = self.app.post(reverse("apiv1session:test_session-list"), params=collections.OrderedDict([
             ('session_type', self.vng_no_auth.session_type.name),
-        ]), headers=self.head).json['exposedurl_set'][0]['exposed_url']
+        ]), headers=self.head).json['exposedurl_set'][0]['subdomain']
 
         self.url_auth = self.app.post(reverse("apiv1session:test_session-list"), params=collections.OrderedDict([
             ('session_type', self.vng_auth.session_type.name),
-        ]), headers=self.head).json['exposedurl_set'][0]['exposed_url']
+        ]), headers=self.head).json['exposedurl_set'][0]['subdomain']
 
         self.url_head = self.app.post(reverse("apiv1session:test_session-list"), params=collections.OrderedDict([
             ('session_type', self.vng_header.session_type.name),
-        ]), headers=self.head).json['exposedurl_set'][0]['exposed_url']
+        ]), headers=self.head).json['exposedurl_set'][0]['subdomain']
 
     def test_no_auth(self):
-        resp = self.app.post(self.url_no_auth + 'post')
+        http_host = get_subdomain(self.url_no_auth)
+        resp = self.app.post(self.url_no_auth + 'post', extra_environ={'HTTP_HOST': '{}-example.com'.format(http_host)})
         self.assertNotIn('authorization', resp.json['headers'])
 
     def test_auth(self):
-        resp = self.app.post(self.url_auth + 'post')
+        http_host = get_subdomain(self.url_auth)
+        resp = self.app.post(self.url_auth + 'post', extra_environ={'HTTP_HOST': '{}-example.com'.format(http_host)})
         self.assertIn('authorization', resp.json['headers'])
 
     def test_header(self):
-        resp = self.app.post(self.url_head + 'post')
+        http_host = get_subdomain(self.url_head)
+        resp = self.app.post(self.url_head + 'post', extra_environ={'HTTP_HOST': '{}-example.com'.format(http_host)})
         self.assertEqual('test', resp.json['headers']['authorization'])

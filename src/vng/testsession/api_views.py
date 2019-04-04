@@ -4,6 +4,7 @@ import logging
 import requests
 
 from urllib import parse
+from zds_client import ClientAuth
 from subdomains.utils import reverse as reverse_sub
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -258,7 +259,8 @@ class RunTest(CSRFExemptMixin, View):
         if session.session_type.authentication == choices.AuthenticationChoices.jwt:
             jwt_auth = get_jwt(session.session_type).credentials()
             for k, i in jwt_auth.items():
-                request_headers[k] = i
+                if k not in request_headers:
+                    request_headers[k] = i
         elif session.session_type.authentication == choices.AuthenticationChoices.header:
             request_headers['authorization'] = session.session_type.header
 
